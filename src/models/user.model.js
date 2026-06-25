@@ -1,6 +1,6 @@
 import mongoose, { mongo, Schema } from "mongoose";
-import jwt from "jsonwebtoken"
-import bcrypt from "bcrypt"
+import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
 
 // Define the structure/schema for User documents
 const userSchema = new Schema(
@@ -63,55 +63,53 @@ const userSchema = new Schema(
 
 // Middleware that runs before saving a document
 userSchema.pre("save", async function (next) {
+  // If password is not modified, skip hashing
+  if (!this.isModified("password")) return next();
 
-    // If password is not modified, skip hashing
-    if(!this.isModified("password")) return next();
+  // Hash the password before storing it in the database
+  //changes the password to a code value
+  this.password = await bcrypt.hash(this.password, 10);
 
-    // Hash the password before storing it in the database
-    //changes the password to a code value
-    this.password = await bcrypt.hash(this.password, 10)
-
-    next()
-})
+});
 
 // Method to compare entered password with hashed password in DB
 userSchema.methods.isPasswordCorrect = async function (password) {
-    //here .compare decrypt the hashed password to match the password entered by the user
-    return await bcrypt.compare(password, this.password)
-}
+  //here .compare decrypt the hashed password to match the password entered by the user
+  return await bcrypt.compare(password, this.password);
+};
 
 // Generate a short-lived Access Token used to authenticate API requests.
 // The token contains basic user information and is signed using
 // ACCESS_TOKEN_SECRET. Once expired, the user must use a Refresh Token
-// to obtain a new Access Token.userSchema.methods.generateAccessToken = function(){
+// to obtain a new Access Token.
+userSchema.methods.generateAccessToken = function () {
+  return jwt.sign(
+    {
+      _id: this._id,
+      email: this.email,
+      username: this.username,
+      fullName: this.fullName,
+    },
+    process.env.ACCESS_TOKEN_SECRET,
+    {
+      expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
+    }
+  );
+
+  // Generate a long-lived Refresh Token used to create new Access Tokens
+  // without requiring the user to log in again. It contains only the user's
+  // id and is signed using REFRESH_TOKEN_SECRET for added security.
+  userSchema.methods.generateRefreshToken = function () {
     return jwt.sign(
-        {
-            _id: this._id,
-            email: this.email,
-            username: this.username,
-            fullName: this.fullName
-        },
-        process.env.ACCESS_TOKEN_SECRET,
-        {
-            expiresIn: process.env.ACCESS_TOKEN_EXPIRY
-        }
-    )
-
-
-
-// Generate a long-lived Refresh Token used to create new Access Tokens
-// without requiring the user to log in again. It contains only the user's
-// id and is signed using REFRESH_TOKEN_SECRET for added security.
-userSchema.methods.generateRefreshToken = function(){
-    return jwt.sign(
-        {
-            _id: this._id,
-        },
-        process.env.REFRESH_TOKEN_SECRET,
-        {
-            expiresIn: process.env.REFRESH_TOKEN_EXPIRY
-        }
-    )
-}
+      {
+        _id: this._id,
+      },
+      process.env.REFRESH_TOKEN_SECRET,
+      {
+        expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
+      }
+    );
+  };
+};
 
 export const User = mongoose.model("User", userSchema);
