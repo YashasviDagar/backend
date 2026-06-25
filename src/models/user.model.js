@@ -96,7 +96,7 @@ userSchema.methods.isPasswordCorrect = async function (password) {
             expiresIn: process.env.ACCESS_TOKEN_EXPIRY
         }
     )
-}
+
 
 
 // Generate a long-lived Refresh Token used to create new Access Tokens
