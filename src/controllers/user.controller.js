@@ -3,10 +3,8 @@ import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import jwt from "jsonwebtoken"
+import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-
-
 
 const registerUser = asyncHandler(async (req, res) => {
   //what we gotta do
@@ -79,15 +77,138 @@ const registerUser = asyncHandler(async (req, res) => {
 
   const createdUser = await User.findById(user._id).select(
     "-password -refreshToken"
-  )
+  );
 
-  if(!createdUser){
-    throw new ApiError(500,"Something went wrong while registering the user!")
+  if (!createdUser) {
+    throw new ApiError(500, "Something went wrong while registering the user!");
   }
 
-  return res.status(201).json(
-    new ApiResponse(200,createdUser,"User registered Successfully")
-  )
+  return res
+    .status(201)
+    .json(new ApiResponse(200, createdUser, "User registered Successfully"));
 });
 
-export { registerUser };
+const generateAccessAndRefereshTokens = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+
+    user.refreshToken = refreshToken;
+    //here mongodb models kick where everyhting is required so bye using validateBeforeSave we say ik what im doing just save the given values
+    await user.save({ validateBeforeSave: false });
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    throw new ApiError(
+      500,
+      "Something went wrong while generating referesh and access token"
+    );
+  }
+};
+
+const loginUser = asyncHandler(async (req, res) => {
+  // req body -> data
+  // username or email
+  //find the user
+  //password check
+  //access and referesh token
+  //send cookie
+
+  // Extract login credentials from the request body
+  const { email, username, password } = req.body;
+
+  // Ensure at least one identifier (username or email) is provided
+  if (!username || !email) {
+    throw new ApiError(400, "Username or Email is required");
+  }
+
+  // Search for the user using either username or email
+  const user = await User.findOne({
+    //here either find the username on basis or email or username
+    $or: [{ username }, { email }],
+  });
+
+  // If no matching user is found, return an error
+  if (!user) {
+    throw new ApiError(404, "User does not exist");
+  }
+
+  // Compare the entered password with the hashed password stored in the database
+  const isPasswordValid = await user.isPasswordCorrect(password);
+
+  // If the password doesn't match, deny access
+  if (!isPasswordValid) {
+    throw new ApiError(401, "Invlaid user credentials");
+  }
+
+  // Generate new Access Token and Refresh Token for the user
+  const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
+    user._id
+  );
+
+  // Fetch the user's details while excluding sensitive fields
+  const loggedInUser = await User.findById(user._id).select(
+    "-password -refreshToken"
+  );
+
+  // Cookie options
+  const options = {
+    // can be modified from server only
+    httpOnly: true,
+
+    // Cookie will only be sent over HTTPS
+    secure: true,
+  };
+
+  // Send tokens as cookies and user data in the response
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new ApiResponse(
+        200,
+        {
+          user: loggedInUser,
+          accessToken,
+          refreshToken,
+        },
+        "User logged In Successfully"
+      )
+    );
+});
+
+const logoutUser = asyncHandler(async (req, res) => {
+  // Remove the refresh token from the user's document in the database.
+  // This invalidates the current login session, so the refresh token
+  // can no longer be used to generate new access tokens.
+  await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $unset: {
+        refreshToken: 1, // $unset removes the refreshToken field from the document
+      },
+    },
+    {
+      new: true, // Return the updated document (not used here, but good practice)
+    }
+  );
+
+  // Cookie options must match the ones used when the cookies were created.
+  // This ensures the browser correctly identifies and removes them.
+  const options = {
+    httpOnly: true, // Cookies cannot be accessed or modified by client-side JavaScript
+    secure: true, // Cookies are sent only over HTTPS
+  };
+
+  // Clear both authentication cookies from the user's browser
+  // and send a success response.
+  return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new ApiResponse(200, {}, "User logged Out"));
+});
+
+export { registerUser, loginUser, logoutUser };
