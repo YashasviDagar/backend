@@ -429,6 +429,128 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, user, "Cover image updated successfully"));
 });
 
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+  // Get the username from the URL parameters
+  const { username } = req.params;
+
+  // Ensure a username was provided
+  if (!username?.trim()) {
+    throw new ApiError(400, "username is missing");
+  }
+
+  // Aggregate data to build a complete channel profile
+  const channel = await User.aggregate([
+    // Stage 1: Filter documents
+    // Only keep the user whose username matches the requested username.
+    {
+      $match: {
+        username: username?.toLowerCase(),
+      },
+    },
+
+    // Stage 2: Join (similar to SQL JOIN)
+    // Fetch all documents from the "subscriptions" collection
+    // where this user's _id appears in the "channel" field.
+    // These are the people who have subscribed to this channel.
+    {
+      $lookup: {
+        // Collection to join with
+        from: "subscriptions",
+
+        // Field from the current (User) collection
+        localField: "_id",
+
+        // Field in the subscriptions collection to compare with localField -- foreign field khn present h 
+        foreignField: "channel",
+
+        // Store the matched documents inside a new array called "subscribers"
+        as: "subscribers",
+      },
+    },
+
+    // Stage 3: Another Join
+    // Fetch all subscriptions where this user is the subscriber.
+    // These are the channels this user has subscribed to.
+    {
+      $lookup: {
+        // Join with subscriptions collection again
+        from: "subscriptions",
+
+        // Current user's _id
+        localField: "_id",
+
+        // Match against subscriber field this time -- ek channel ne kitto ko subscribe kr rakha h 
+        foreignField: "subscriber",
+
+        // Store matched documents in subscribedTo array
+        as: "subscribedTo",
+      },
+    },
+
+    // Stage 4: Create new computed fields
+    {
+      $addFields: {
+        // Count total subscribers
+        subscribersCount: {
+          $size: "$subscribers",
+        },
+
+        // Count how many channels this user has subscribed to
+        channelsSubscribedToCount: {
+          $size: "$subscribedTo",
+        },
+
+        // Check whether the currently logged-in user
+        // is present in the subscribers array.
+        isSubscribed: {
+          $cond: {
+            // If req.user._id exists inside
+            // subscribers[].subscriber
+            if: {
+              $in: [req.user?._id, "$subscribers.subscriber"],
+            },
+
+            // Then current user is subscribed
+            then: true,
+
+            // Otherwise not subscribed
+            else: false,
+          },
+        },
+      },
+    },
+
+    // Stage 5: Return only the fields we want
+    {
+      $project: {
+        // 1 means include this field
+        fullName: 1,
+        username: 1,
+        subscribersCount: 1,
+        channelsSubscribedToCount: 1,
+        isSubscribed: 1,
+        avatar: 1,
+        coverImage: 1,
+        email: 1,
+
+        // Any field not listed here won't be returned.
+      },
+    },
+  ]);
+
+  // If no matching channel is found, return an error
+  if (!channel?.length) {
+    throw new ApiError(404, "channel does not exists");
+  }
+
+  // Return the first (and only) matching channel profile
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, channel[0], "User channel fetched successfully")
+    );
+});
+
 export {
   registerUser,
   loginUser,
@@ -438,5 +560,6 @@ export {
   getCurrentUser,
   updateAccountDetails,
   updateUserAvatar,
-  updateUserCoverImage
+  updateUserCoverImage,
+  getUserChannelProfile
 };
