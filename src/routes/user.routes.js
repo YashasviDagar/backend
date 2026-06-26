@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   loginUser,
   logoutUser,
+  refreshAccessToken,
   registerUser,
 } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
@@ -42,6 +43,7 @@ router.route("/login").post(loginUser);
 // verifyJWT middleware first checks whether the user is authenticated.
 // If the JWT is valid, the request proceeds to logoutUser.
 router.route("/logout").post(verifyJWT, logoutUser);
+router.route("/refresh-token").post(refreshAccessToken);
 
 // Export the router so it can be used in app.js
 export default router;
