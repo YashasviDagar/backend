@@ -62,14 +62,11 @@ const userSchema = new Schema(
 );
 
 // Middleware that runs before saving a document
-userSchema.pre("save", async function (next) {
-  // If password is not modified, skip hashing
-  if (!this.isModified("password")) return next();
-
-  // Hash the password before storing it in the database
-  //changes the password to a code value
+//here no next function is required! error 
+userSchema.pre("save", async function () {
+  if (!this.isModified("password")) return;
+  //changes the password into a code value 
   this.password = await bcrypt.hash(this.password, 10);
-
 });
 
 // Method to compare entered password with hashed password in DB
@@ -80,8 +77,7 @@ userSchema.methods.isPasswordCorrect = async function (password) {
 
 // Generate a short-lived Access Token used to authenticate API requests.
 // The token contains basic user information and is signed using
-// ACCESS_TOKEN_SECRET. Once expired, the user must use a Refresh Token
-// to obtain a new Access Token.
+// ACCESS_TOKEN_SECRET.
 userSchema.methods.generateAccessToken = function () {
   return jwt.sign(
     {
@@ -95,21 +91,20 @@ userSchema.methods.generateAccessToken = function () {
       expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
     }
   );
+};
 
-  // Generate a long-lived Refresh Token used to create new Access Tokens
-  // without requiring the user to log in again. It contains only the user's
-  // id and is signed using REFRESH_TOKEN_SECRET for added security.
-  userSchema.methods.generateRefreshToken = function () {
-    return jwt.sign(
-      {
-        _id: this._id,
-      },
-      process.env.REFRESH_TOKEN_SECRET,
-      {
-        expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
-      }
-    );
-  };
+// Generate a long-lived Refresh Token used to create new Access Tokens
+// without requiring the user to log in again.
+userSchema.methods.generateRefreshToken = function () {
+  return jwt.sign(
+    {
+      _id: this._id,
+    },
+    process.env.REFRESH_TOKEN_SECRET,
+    {
+      expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
+    }
+  );
 };
 
 export const User = mongoose.model("User", userSchema);

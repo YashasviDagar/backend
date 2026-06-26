@@ -100,6 +100,7 @@ const generateAccessAndRefereshTokens = async (userId) => {
 
     return { accessToken, refreshToken };
   } catch (error) {
+    // console.log(error)
     throw new ApiError(
       500,
       "Something went wrong while generating referesh and access token"
@@ -115,13 +116,20 @@ const loginUser = asyncHandler(async (req, res) => {
   //access and referesh token
   //send cookie
 
+   console.log("BODY:", req.body);
+
   // Extract login credentials from the request body
   const { email, username, password } = req.body;
+  console.log(email);
 
-  // Ensure at least one identifier (username or email) is provided
-  if (!username || !email) {
-    throw new ApiError(400, "Username or Email is required");
+  if (!username && !email) {
+    throw new ApiError(400, "username or email is required");
   }
+
+  // Here is an alternative of above code based on logic discussed in video:
+  // if (!(username || email)) {
+  //     throw new ApiError(400, "username or email is required")
+  // }
 
   // Search for the user using either username or email
   const user = await User.findOne({
