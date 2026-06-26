@@ -460,7 +460,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         // Field from the current (User) collection
         localField: "_id",
 
-        // Field in the subscriptions collection to compare with localField -- foreign field khn present h 
+        // Field in the subscriptions collection to compare with localField -- foreign field khn present h
         foreignField: "channel",
 
         // Store the matched documents inside a new array called "subscribers"
@@ -479,7 +479,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         // Current user's _id
         localField: "_id",
 
-        // Match against subscriber field this time -- ek channel ne kitto ko subscribe kr rakha h 
+        // Match against subscriber field this time -- ek channel ne kitto ko subscribe kr rakha h
         foreignField: "subscriber",
 
         // Store matched documents in subscribedTo array
@@ -551,6 +551,94 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
     );
 });
 
+const getWatchHistory = asyncHandler(async (req, res) => {
+  // Aggregate data for the currently logged-in user
+  const user = await User.aggregate([
+    // Stage 1: Find the logged-in user.
+    // Aggregation requires ObjectId, so convert req.user._id into an ObjectId.
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(req.user._id),
+      },
+    },
+
+    // Stage 2: First (Outer) $lookup
+    // Join the "videos" collection with the current user.
+    // The watchHistory array contains video IDs, and this lookup
+    // replaces those IDs with the actual video documents.
+    {
+      $lookup: {
+        // Collection to join with
+        from: "videos",
+
+        // Field from the current (User) collection
+        // Contains an array of watched video IDs
+        localField: "watchHistory",
+
+        // Field in the Videos collection to compare with localField
+        foreignField: "_id",
+
+        // Store the matched video documents in the watchHistory field
+        as: "watchHistory",
+
+        // Run additional aggregation on every matched video document
+        pipeline: [
+          // Nested (Inner) $lookup
+          // For each video, fetch the owner's details
+          {
+            $lookup: {
+              // Join with the users collection
+              from: "users",
+
+              // owner field inside each Video document
+              localField: "owner",
+
+              // Match it with the user's _id
+              foreignField: "_id",
+
+              // Store the matched owner document in an array called owner
+              as: "owner",
+
+              // Additional pipeline for the nested lookup
+              // Return only the required owner fields
+              pipeline: [
+                {
+                  $project: {
+                    fullName: 1,
+                    username: 1,
+                    avatar: 1,
+                  },
+                },
+              ],
+            },
+          },
+
+          // Since every video has only one owner,
+          // convert the owner array into a single object.
+          {
+            $addFields: {
+              owner: {
+                $first: "$owner",
+              },
+            },
+          },
+        ],
+      },
+    },
+  ]);
+
+  // Return only the populated watch history
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        user[0].watchHistory,
+        "Watch history fetched successfully"
+      )
+    );
+});
+
 export {
   registerUser,
   loginUser,
@@ -561,5 +649,6 @@ export {
   updateAccountDetails,
   updateUserAvatar,
   updateUserCoverImage,
-  getUserChannelProfile
+  getUserChannelProfile,
+  getWatchHistory
 };
